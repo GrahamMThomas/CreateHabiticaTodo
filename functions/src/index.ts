@@ -1,29 +1,49 @@
 import * as functions from "firebase-functions";
+import { conversation } from "@assistant/conversation";
+import fetch from "node-fetch";
 
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
 const config = functions.config();
 const HABITICA_BASE_URL = "https://habitica.com/api/v3/tasks/user";
 
-export const helloWorld = functions.https.onRequest(async (request, response) => {
-  functions.logger.info("Hello logs! ", { structuredData: true });
+const app = conversation();
 
-  const content = {
-    text: "request",
-    type: "todo"
+app.handle("CreateHabiticaTodo", async (conv) => {
+  const taskTextArr = conv.request.intent?.query?.split(" ");
+
+  if ((taskTextArr?.length || 0) < 6) {
+    functions.logger.info(`Bad Speech: ${conv.request.intent?.query}`);
+    conv.add("Malformed speech.");
+    return;
   }
 
+  const taskText = taskTextArr?.slice(6).join(" ");
+
+  const content = {
+    text: taskText,
+    type: "todo",
+  };
+
   const response2 = await fetch(HABITICA_BASE_URL, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(content),
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-user': config.habitica.userid,
-      'x-api-key': config.habitica.apitoken,
-      'x-client': functions.config.name
-    }
+      "Content-Type": "application/json",
+      "x-api-user": config.habitica.userid,
+      "x-api-key": config.habitica.apitoken,
+      "x-client": functions.config.name,
+    },
   });
 
+  functions.logger.info(`Called Habitica: ${response2.ok}`);
+  functions.logger.info(`Called Habitica: ${await response2.json()}`);
 
-  response.send(`Hello from Firebase! ${config.habitica.userid} blarg. ${response2.ok} ${JSON.stringify(await response2.json())}`);
+  if (!response2.ok) {
+    conv.add("Habitica failed to respond.");
+    return;
+  }
+
+  functions.logger.info(`Got Request2: ${JSON.stringify(conv.request)}`);
+  conv.add(`Created task called, ${taskText}, in Habitica.`);
 });
+
+exports.fulfillment = functions.https.onRequest(app);
